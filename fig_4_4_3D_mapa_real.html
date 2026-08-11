@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>COMPARATIVA ILS Z vs RNP 21 — GCRR Lanzarote (3D con mapa)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0a0e17;
+    color: #e0e0e0;
+    overflow: hidden;
+  }
+  #container { width: 100vw; height: 100vh; position: relative; }
+  canvas { display: block; }
+
+  #header {
+    position: absolute; top: 0; left: 0; right: 0;
+    background: rgba(10,14,23,0.88);
+    padding: 10px 20px;
+    z-index: 10;
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  #header h1 {
+    font-size: 15px; font-weight: 600; color: #fff;
+    letter-spacing: 0.3px;
+  }
+  #header p {
+    font-size: 11px; color: #8899aa; margin-top: 2px;
+  }
+
+  #legend {
+    position: absolute; top: 70px; left: 14px;
+    background: rgba(10,14,23,0.92);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 12px 14px;
+    z-index: 10;
+    font-size: 11px;
+    min-width: 200px;
+    backdrop-filter: blur(6px);
+  }
+  #legend h3 { font-size: 12px; color: #ccc; margin-bottom: 8px; font-weight: 600; }
+  .leg-item { display: flex; align-items: center; margin: 5px 0; }
+  .leg-line {
+    width: 24px; height: 3px; border-radius: 2px; margin-right: 8px; flex-shrink: 0;
+  }
+  .leg-dash {
+    width: 24px; height: 0; border-top: 3px dashed; margin-right: 8px; flex-shrink: 0;
+  }
+  .leg-plane {
+    width: 24px; height: 10px; margin-right: 8px; flex-shrink: 0;
+    border-radius: 2px; opacity: 0.5;
+  }
+
+  #info {
+    position: absolute; bottom: 10px; left: 14px;
+    background: rgba(10,14,23,0.88);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 8px 14px;
+    z-index: 10;
+    font-size: 10px; color: #667;
+    backdrop-filter: blur(6px);
+  }
+
+  #controls {
+    position: absolute; top: 70px; right: 14px;
+    background: rgba(10,14,23,0.92);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 10px 14px;
+    z-index: 10;
+    font-size: 11px;
+    backdrop-filter: blur(6px);
+  }
+  #controls label { display: block; margin: 4px 0; cursor: pointer; color: #aab; }
+  #controls input[type="range"] { width: 120px; vertical-align: middle; }
+
+  #loading {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 14px; color: #8899aa; z-index: 20;
+    text-align: center;
+  }
+  #loading .spinner {
+    width: 30px; height: 30px; border: 3px solid rgba(255,255,255,0.1);
+    border-top: 3px solid #4a9eff;
+    border-radius: 50%; margin: 0 auto 10px;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="container">
+  <div id="header">
+    <h1>COMPARATIVA: ILS Z RWY 03 vs. RNP RWY 21 — Vista 3D con mapa</h1>
+    <p>Fuente: AIP España AD 2-GCRR IAC 1.2 (AMDT 378/24) e IAC 7.2 (AIRAC AMDT 02/23), AIS-España / ENAIRE</p>
+  </div>
+
+  <div id="legend">
+    <h3>Procedimientos</h3>
+    <div class="leg-item"><div class="leg-line" style="background:#4a9eff"></div>ILS Z RWY 03 (BAPAL→THR)</div>
+    <div class="leg-item"><div class="leg-line" style="background:#00d4aa"></div>Senda GP 3.0°</div>
+    <div class="leg-item"><div class="leg-line" style="background:#ff4444"></div>RNP 21 — Ruta LUNOB</div>
+    <div class="leg-item"><div class="leg-line" style="background:#ff9900"></div>RNP 21 — Ruta NAVIM</div>
+    <div class="leg-item"><div class="leg-dash" style="border-color:#ff4444"></div>Frustrada RNP 21</div>
+    <div class="leg-item"><div class="leg-line" style="background:#ffaa00; height:4px"></div>RWY 03/21</div>
+    <h3 style="margin-top:10px">Planos de referencia</h3>
+    <div class="leg-item"><div class="leg-plane" style="background:#4a9eff"></div>DA ILS Cat I — 710 ft</div>
+    <div class="leg-item"><div class="leg-plane" style="background:#ff4444"></div>OCA/H LNAV — 1700 ft</div>
+    <div class="leg-item"><div class="leg-plane" style="background:#ff9900"></div>OCA/H Circuito — 2700 ft</div>
+  </div>
+
+  <div id="controls">
+    <label>Exageración vertical:
+      <input type="range" id="vscale" min="1" max="8" value="3" step="0.5">
+      <span id="vscale-val">3.0×</span>
+    </label>
+    <label style="margin-top:6px">
+      <input type="checkbox" id="toggle-planes" checked> Planos de altitud
+    </label>
+    <label>
+      <input type="checkbox" id="toggle-labels" checked> Etiquetas
+    </label>
+  </div>
+
+  <div id="info">
+    Arrastrar: rotar · Rueda: zoom · Clic derecho: desplazar ·
+    Datos: AIP España AD 2-GCRR · © OpenStreetMap contributors
+  </div>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    Cargando tiles de OpenStreetMap...
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ============================================================================
+// DATOS DE PROCEDIMIENTOS (coordenadas WGS-84, altitudes en ft AMSL)
+// Fuente: AIP España AD 2-GCRR
+// ============================================================================
+
+function dms(d, m, s, h) {
+  const dec = d + m / 60 + s / 3600;
+  return (h === 'S' || h === 'W') ? -dec : dec;
+}
+
+// Origen: ARP GCRR
+const ARP = { lat: dms(28,56,44,'N'), lon: dms(13,36,19,'W') };
+const KM_LAT = 111.32;
+const KM_LON = 111.32 * Math.cos(ARP.lat * Math.PI / 180); // ~97.40
+const FT_KM = 0.0003048;
+
+// Umbrales — AD 2-GCRR Casilla 12 (AMDT 404/26)
+const THR03 = { lat: dms(28,56,11.559,'N'), lon: dms(13,36,37.4275,'W'), ft: 19 };
+const THR21 = { lat: dms(28,57,18.40,'N'), lon: dms(13,35,58.67,'W'), ft: 47 };
+const LTE = { lat: dms(28,56,53.4,'N'), lon: dms(13,36,4.8,'W') };
+
+// ILS Z RWY 03 (IAC 1.2, AMDT 378/24)
+const ILS_Z = [
+  { n:'BAPAL', lat:dms(28,41,16.5,'N'), lon:dms(13,25,45.4,'W'), ft:5000 },
+  { n:'GARGO', lat:dms(28,43,37.7,'N'), lon:dms(13,34,27.4,'W'), ft:2300 },
+  { n:'LOBSO', lat:dms(28,45,10.5,'N'), lon:dms(13,40,15,'W'),   ft:2300 },
+  { n:'GOLFY', lat:dms(28,47,12.9,'N'), lon:dms(13,41,49.2,'W'), ft:2300 },
+  { n:'FAP',   lat:dms(28,50,2.9,'N'),  lon:dms(13,40,10.9,'W'), ft:1682 },
+];
+
+// RNP 21 — Ruta LUNOB (IAC 7.2, AIRAC AMDT 02/23)
+const RNP21_L = [
+  { n:'LUNOB', lat:dms(29,10,48,'N'), lon:dms(13,45,12,'W'), ft:6000 },
+  { n:'TUXAM', lat:dms(29,7,50.8,'N'),lon:dms(13,29,9.7,'W'),ft:4000 },
+  { n:'RR550', lat:dms(29,5,38.7,'N'),lon:dms(13,25,12.6,'W'),ft:3500 },
+  { n:'SONUS', lat:dms(29,2,36.7,'N'),lon:dms(13,24,40.6,'W'),ft:3000 },
+  { n:'RR03E', lat:dms(29,1,21.3,'N'),lon:dms(13,28,24.3,'W'),ft:2700 },
+  { n:'RR551', lat:dms(29,0,14.5,'N'),lon:dms(13,31,42.4,'W'),ft:1700 },
+];
+
+// RNP 21 — Ruta NAVIM
+const RNP21_N = [
+  { n:'NAVIM', lat:dms(29,8,39.6,'N'),lon:dms(13,19,46.4,'W'),ft:5000 },
+  { n:'SONUS', lat:dms(29,2,36.7,'N'),lon:dms(13,24,40.6,'W'),ft:3000 },
+  { n:'RR03E', lat:dms(29,1,21.3,'N'),lon:dms(13,28,24.3,'W'),ft:2700 },
+  { n:'RR551', lat:dms(29,0,14.5,'N'),lon:dms(13,31,42.4,'W'),ft:1700 },
+];
+
+// Frustrada RNP 21
+const RNP21_MA = [
+  { n:'RR551', lat:dms(29,0,14.5,'N'), lon:dms(13,31,42.4,'W'),ft:1700 },
+  { n:'RR552', lat:dms(28,59,9.9,'N'), lon:dms(13,34,54,'W'),  ft:2000 },
+  { n:'RR553', lat:dms(28,56,29.1,'N'),lon:dms(13,36,27.2,'W'),ft:3500 },
+  { n:'RR554', lat:dms(28,57,31,'N'),  lon:dms(13,19,40,'W'),  ft:4000 },
+];
+
+// ============================================================================
+// TILE LOADING
+// ============================================================================
+
+const ZOOM = 11;
+
+function lonToTileX(lon, z) { return Math.floor((lon + 180) / 360 * (1 << z)); }
+function latToTileY(lat, z) {
+  const r = lat * Math.PI / 180;
+  return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * (1 << z));
+}
+function tileXToLon(x, z) { return x / (1 << z) * 360 - 180; }
+function tileYToLat(y, z) {
+  const n = Math.PI - 2 * Math.PI * y / (1 << z);
+  return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
+
+// Tiles needed for Lanzarote
+const TX_MIN = lonToTileX(-13.87, ZOOM);  // west edge
+const TX_MAX = lonToTileX(-13.20, ZOOM);  // east edge (extended for NAVIM/RR554)
+const TY_MIN = latToTileY(29.25, ZOOM);   // north edge
+const TY_MAX = latToTileY(28.60, ZOOM);   // south edge (extended for BAPAL)
+
+const COLS = TX_MAX - TX_MIN + 1;
+const ROWS = TY_MAX - TY_MIN + 1;
+const TILE_PX = 256;
+
+function loadTiles() {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = COLS * TILE_PX;
+    canvas.height = ROWS * TILE_PX;
+    const ctx = canvas.getContext('2d');
+
+    let loaded = 0;
+    const total = COLS * ROWS;
+
+    for (let ty = TY_MIN; ty <= TY_MAX; ty++) {
+      for (let tx = TX_MIN; tx <= TX_MAX; tx++) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        const col = tx - TX_MIN;
+        const row = ty - TY_MIN;
+        img.onload = function () {
+          ctx.drawImage(img, col * TILE_PX, row * TILE_PX, TILE_PX, TILE_PX);
+          loaded++;
+          if (loaded >= total) {
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+            // Geographic bounds of the composite image
+            const bounds = {
+              west: tileXToLon(TX_MIN, ZOOM),
+              east: tileXToLon(TX_MAX + 1, ZOOM),
+              north: tileYToLat(TY_MIN, ZOOM),
+              south: tileYToLat(TY_MAX + 1, ZOOM),
+            };
+            resolve({ texture, bounds });
+          }
+        };
+        img.onerror = function () {
+          loaded++;
+          if (loaded >= total) {
+            const texture = new THREE.CanvasTexture(canvas);
+            const bounds = {
+              west: tileXToLon(TX_MIN, ZOOM),
+              east: tileXToLon(TX_MAX + 1, ZOOM),
+              north: tileYToLat(TY_MIN, ZOOM),
+              south: tileYToLat(TY_MAX + 1, ZOOM),
+            };
+            resolve({ texture, bounds });
+          }
+        };
+        img.src = `https://tile.openstreetmap.org/${ZOOM}/${tx}/${ty}.png`;
+      }
+    }
+  });
+}
+
+// ============================================================================
+// THREE.JS SCENE
+// ============================================================================
+
+let scene, camera, renderer;
+let groundPlane, altPlanes = [], labelSprites = [];
+let vScale = 3.0;
+
+// Convert lat/lon/ft to scene coordinates (km, with vertical exaggeration)
+function toScene(lat, lon, ft) {
+  const x = (lon - ARP.lon) * KM_LON;
+  const y = (lat - ARP.lat) * KM_LAT;
+  const z = ft * FT_KM * vScale;
+  return new THREE.Vector3(x, y, z);
+}
+
+function createLine(waypoints, color, width, dashed) {
+  const points = waypoints.map(w => toScene(w.lat, w.lon, w.ft));
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+  let material;
+  if (dashed) {
+    material = new THREE.LineDashedMaterial({
+      color: color, linewidth: 1, dashSize: 0.4, gapSize: 0.2
+    });
+  } else {
+    material = new THREE.LineBasicMaterial({ color: color, linewidth: 1 });
+  }
+
+  const line = new THREE.Line(geometry, material);
+  if (dashed) line.computeLineDistances();
+  return line;
+}
+
+function createGlideslope(fap, thr, color, nPts) {
+  const points = [];
+  for (let i = 0; i < nPts; i++) {
+    const t = i / (nPts - 1);
+    const lat = fap.lat + t * (thr.lat - fap.lat);
+    const lon = fap.lon + t * (thr.lon - fap.lon);
+    const ft = fap.ft + t * (thr.ft - fap.ft);
+    points.push(toScene(lat, lon, ft));
+  }
+  const geo = new THREE.BufferGeometry().setFromPoints(points);
+  return new THREE.Line(geo, new THREE.LineBasicMaterial({ color }));
+}
+
+function createTubeTrajectory(waypoints, color, radius) {
+  const points = waypoints.map(w => toScene(w.lat, w.lon, w.ft));
+  const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal', 0);
+  // Use a polyline-like approach with many segments
+  const curvePoints = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i], b = points[i+1];
+    for (let t = 0; t <= 1; t += 0.05) {
+      curvePoints.push(new THREE.Vector3(
+        a.x + t * (b.x - a.x),
+        a.y + t * (b.y - a.y),
+        a.z + t * (b.z - a.z),
+      ));
+    }
+  }
+  const path = new THREE.CatmullRomCurve3(curvePoints, false, 'centripetal', 0);
+  const tubeGeo = new THREE.TubeGeometry(path, curvePoints.length * 2, radius, 8, false);
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 });
+  return new THREE.Mesh(tubeGeo, mat);
+}
+
+function createWaypointMarker(wp, color) {
+  const pos = toScene(wp.lat, wp.lon, wp.ft);
+  const geo = new THREE.SphereGeometry(0.25, 12, 12);
+  const mat = new THREE.MeshBasicMaterial({ color });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(pos);
+  return mesh;
+}
+
+function createTextSprite(text, position, color, size) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = 256;
+  canvas.height = 64;
+  ctx.font = 'bold 20px Segoe UI, system-ui, sans-serif';
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.fillText(text, 128, 24);
+  ctx.font = '16px Segoe UI, system-ui, sans-serif';
+  ctx.fillStyle = '#aaa';
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  const mat = new THREE.SpriteMaterial({
+    map: texture, transparent: true, depthWrite: false
+  });
+  const sprite = new THREE.Sprite(mat);
+  sprite.position.copy(position);
+  sprite.position.z += 0.35;
+  sprite.scale.set(size * 4, size, 1);
+  return sprite;
+}
+
+function createAltPlane(altFt, color, opacity) {
+  const z = altFt * FT_KM * vScale;
+  const size = 80;
+  const geo = new THREE.PlaneGeometry(size, size);
+  const mat = new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(0, 0, z);
+  return mesh;
+}
+
+function createRunway() {
+  const p1 = toScene(THR03.lat, THR03.lon, THR03.ft);
+  const p2 = toScene(THR21.lat, THR21.lon, THR21.ft);
+  const dir = new THREE.Vector3().subVectors(p2, p1);
+  const len = dir.length();
+  const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+
+  const geo = new THREE.BoxGeometry(0.06, len, 0.008);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(mid);
+  const angle = Math.atan2(dir.x, dir.y);
+  mesh.rotation.z = -angle;
+  return mesh;
+}
+
+// ============================================================================
+// ORBIT CONTROLS (manual implementation)
+// ============================================================================
+
+let isDragging = false, isRightDrag = false;
+let prevMouse = { x: 0, y: 0 };
+let spherical = { r: 60, theta: Math.PI / 3.5, phi: Math.PI / 4.5 };
+let target = new THREE.Vector3(0, 8, 0.8);
+
+function updateCamera() {
+  const r = spherical.r;
+  const x = r * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+  const y = r * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+  const z = r * Math.cos(spherical.phi);
+  camera.position.set(target.x + x, target.y + y, target.z + z);
+  camera.lookAt(target);
+  camera.up.set(0, 0, 1);
+}
+
+function initControls(el) {
+  el.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    isRightDrag = e.button === 2;
+    prevMouse = { x: e.clientX, y: e.clientY };
+  });
+  el.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - prevMouse.x;
+    const dy = e.clientY - prevMouse.y;
+    prevMouse = { x: e.clientX, y: e.clientY };
+
+    if (isRightDrag) {
+      // Pan
+      const right = new THREE.Vector3();
+      const up = new THREE.Vector3();
+      camera.getWorldDirection(new THREE.Vector3());
+      right.crossVectors(camera.up, new THREE.Vector3().subVectors(target, camera.position)).normalize();
+      up.copy(camera.up);
+      target.addScaledVector(right, dx * 0.05);
+      target.addScaledVector(up, -dy * 0.05);
+    } else {
+      // Orbit
+      spherical.theta -= dx * 0.005;
+      spherical.phi = Math.max(0.05, Math.min(Math.PI / 2 - 0.01, spherical.phi - dy * 0.005));
+    }
+    updateCamera();
+  });
+  el.addEventListener('mouseup', () => { isDragging = false; });
+  el.addEventListener('mouseleave', () => { isDragging = false; });
+  el.addEventListener('wheel', (e) => {
+    spherical.r *= e.deltaY > 0 ? 1.08 : 0.93;
+    spherical.r = Math.max(5, Math.min(200, spherical.r));
+    updateCamera();
+    e.preventDefault();
+  }, { passive: false });
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
+// ============================================================================
+// REBUILD SCENE (when vScale changes)
+// ============================================================================
+
+let groundGroup, procGroup;
+
+function rebuildProcedures() {
+  if (procGroup) scene.remove(procGroup);
+  procGroup = new THREE.Group();
+
+  // Runway
+  procGroup.add(createRunway());
+
+  // ILS Z approach (tubes for better visibility)
+  procGroup.add(createTubeTrajectory(ILS_Z, 0x4a9eff, 0.12));
+  ILS_Z.forEach(w => procGroup.add(createWaypointMarker(w, 0x4a9eff)));
+
+  // Glideslope
+  procGroup.add(createGlideslope(ILS_Z[ILS_Z.length-1], THR03, 0x00d4aa, 150));
+
+  // RNP 21 LUNOB
+  procGroup.add(createTubeTrajectory(RNP21_L, 0xff4444, 0.12));
+  RNP21_L.forEach(w => procGroup.add(createWaypointMarker(w, 0xff4444)));
+
+  // RNP 21 NAVIM
+  procGroup.add(createTubeTrajectory(RNP21_N, 0xff9900, 0.10));
+  RNP21_N.forEach(w => procGroup.add(createWaypointMarker(w, 0xff9900)));
+
+  // Frustrada RNP 21
+  procGroup.add(createLine(RNP21_MA, 0xff4444, 1, true));
+  RNP21_MA.forEach(w => procGroup.add(createWaypointMarker(w, 0xff4444)));
+
+  // Vertical drop lines from waypoints to ground (for depth perception)
+  const allWps = [...ILS_Z, ...RNP21_L, ...RNP21_N, ...RNP21_MA];
+  allWps.forEach(w => {
+    const top = toScene(w.lat, w.lon, w.ft);
+    const bot = toScene(w.lat, w.lon, 0);
+    const geo = new THREE.BufferGeometry().setFromPoints([top, bot]);
+    const mat = new THREE.LineBasicMaterial({ color: 0x444466, transparent: true, opacity: 0.25 });
+    procGroup.add(new THREE.Line(geo, mat));
+  });
+
+  // Labels
+  labelSprites = [];
+  const labelData = [
+    ...ILS_Z.map(w => ({ ...w, c: '#4a9eff' })),
+    ...RNP21_L.map(w => ({ ...w, c: '#ff4444' })),
+    ...RNP21_N.filter(w => !RNP21_L.find(l => l.n === w.n)).map(w => ({ ...w, c: '#ff9900' })),
+    ...RNP21_MA.filter(w => !RNP21_L.find(l => l.n === w.n)).map(w => ({ ...w, c: '#ff6666' })),
+    { n: 'THR 03', lat: THR03.lat, lon: THR03.lon, ft: THR03.ft, c: '#ffffff' },
+    { n: 'THR 21', lat: THR21.lat, lon: THR21.lon, ft: THR21.ft, c: '#ffffff' },
+  ];
+  // Deduplicate by name
+  const seen = new Set();
+  labelData.forEach(w => {
+    if (seen.has(w.n)) return;
+    seen.add(w.n);
+    const pos = toScene(w.lat, w.lon, w.ft);
+    const sprite = createTextSprite(`${w.n}  ${w.ft}ft`, pos, w.c, 1.2);
+    labelSprites.push(sprite);
+    procGroup.add(sprite);
+  });
+
+  // Altitude reference planes
+  altPlanes = [];
+  const planeData = [
+    { ft: 710,  color: 0x4a9eff, op: 0.06, label: 'DA 710 ft' },
+    { ft: 1700, color: 0xff4444, op: 0.06, label: 'OCA/H 1700 ft' },
+    { ft: 2700, color: 0xff9900, op: 0.06, label: 'OCA/H 2700 ft' },
+  ];
+  planeData.forEach(p => {
+    const plane = createAltPlane(p.ft, p.color, p.op);
+    altPlanes.push(plane);
+    procGroup.add(plane);
+
+    // Edge lines for planes
+    const z = p.ft * FT_KM * vScale;
+    const s = 40;
+    const edgeGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-s,-s,z), new THREE.Vector3(s,-s,z),
+      new THREE.Vector3(s,s,z), new THREE.Vector3(-s,s,z),
+      new THREE.Vector3(-s,-s,z),
+    ]);
+    procGroup.add(new THREE.Line(edgeGeo,
+      new THREE.LineBasicMaterial({ color: p.color, transparent: true, opacity: 0.2 })));
+
+    // Label for plane
+    const planeLabel = createTextSprite(p.label, new THREE.Vector3(-38, -38, z), '#888', 1.0);
+    procGroup.add(planeLabel);
+  });
+
+  // ARP marker
+  const arpPos = toScene(ARP.lat, ARP.lon, 47);
+  const arpGeo = new THREE.SphereGeometry(0.3, 16, 16);
+  const arpMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+  const arpMesh = new THREE.Mesh(arpGeo, arpMat);
+  arpMesh.position.copy(arpPos);
+  procGroup.add(arpMesh);
+
+  scene.add(procGroup);
+}
+
+// ============================================================================
+// MAIN INIT
+// ============================================================================
+
+async function init() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a0e17);
+
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+  updateCamera();
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  document.getElementById('container').appendChild(renderer.domElement);
+
+  initControls(renderer.domElement);
+
+  // Load map tiles
+  const { texture, bounds } = await loadTiles();
+  document.getElementById('loading').style.display = 'none';
+
+  console.log('Tile bounds:', bounds);
+  console.log('ARP:', ARP);
+  console.log('THR03 scene pos:', toScene(THR03.lat, THR03.lon, THR03.ft));
+  console.log('LUNOB scene pos:', toScene(RNP21_L[0].lat, RNP21_L[0].lon, RNP21_L[0].ft));
+
+  // Create ground plane with map texture
+  const w = (bounds.east - bounds.west) * KM_LON;
+  const h = (bounds.north - bounds.south) * KM_LAT;
+  const cx = ((bounds.east + bounds.west) / 2 - ARP.lon) * KM_LON;
+  const cy = ((bounds.north + bounds.south) / 2 - ARP.lat) * KM_LAT;
+
+  console.log('Ground plane: w=', w, 'h=', h, 'cx=', cx, 'cy=', cy);
+
+  const groundGeo = new THREE.PlaneGeometry(w, h);
+  const groundMat = new THREE.MeshBasicMaterial({
+    map: texture, transparent: true, opacity: 0.92, side: THREE.DoubleSide
+  });
+  groundPlane = new THREE.Mesh(groundGeo, groundMat);
+  groundPlane.position.set(cx, cy, 0);
+  scene.add(groundPlane);
+
+  // Grid helper (subtle)
+  const grid = new THREE.GridHelper(100, 50, 0x1a2030, 0x1a2030);
+  grid.rotation.x = Math.PI / 2;
+  grid.position.z = -0.01;
+  scene.add(grid);
+
+  // Build procedures
+  rebuildProcedures();
+
+  // Controls UI
+  document.getElementById('vscale').addEventListener('input', (e) => {
+    vScale = parseFloat(e.target.value);
+    document.getElementById('vscale-val').textContent = vScale.toFixed(1) + '×';
+    rebuildProcedures();
+  });
+
+  document.getElementById('toggle-planes').addEventListener('change', (e) => {
+    altPlanes.forEach(p => { p.visible = e.target.checked; });
+  });
+
+  document.getElementById('toggle-labels').addEventListener('change', (e) => {
+    labelSprites.forEach(s => { s.visible = e.target.checked; });
+  });
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  animate();
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>CONFLICTO MAP-DEP: Frustrada RNP 21 sobre el aeropuerto — GCRR Lanzarote (3D con mapa)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0e17; color: #e0e0e0; overflow: hidden; }
+  #container { width: 100vw; height: 100vh; position: relative; }
+  canvas { display: block; }
+  #header { position: absolute; top: 0; left: 0; right: 0; background: rgba(10,14,23,0.88); padding: 10px 20px; z-index: 10; backdrop-filter: blur(6px); border-bottom: 1px solid rgba(255,255,255,0.08); }
+  #header h1 { font-size: 15px; font-weight: 600; color: #fff; letter-spacing: 0.3px; }
+  #header p { font-size: 11px; color: #8899aa; margin-top: 2px; }
+  #legend { position: absolute; top: 70px; left: 14px; background: rgba(10,14,23,0.92); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 12px 14px; z-index: 10; font-size: 11px; min-width: 200px; backdrop-filter: blur(6px); }
+  #legend h3 { font-size: 12px; color: #ccc; margin-bottom: 8px; font-weight: 600; }
+  .leg-item { display: flex; align-items: center; margin: 5px 0; }
+  .leg-line { width: 24px; height: 3px; border-radius: 2px; margin-right: 8px; flex-shrink: 0; }
+  .leg-dash { width: 24px; height: 0; border-top: 3px dashed; margin-right: 8px; flex-shrink: 0; }
+  .leg-plane { width: 24px; height: 10px; margin-right: 8px; flex-shrink: 0; border-radius: 2px; opacity: 0.5; }
+  #info { position: absolute; bottom: 10px; left: 14px; background: rgba(10,14,23,0.88); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 8px 14px; z-index: 10; font-size: 10px; color: #667; backdrop-filter: blur(6px); }
+  #controls { position: absolute; top: 70px; right: 14px; background: rgba(10,14,23,0.92); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 10px 14px; z-index: 10; font-size: 11px; backdrop-filter: blur(6px); }
+  #controls label { display: block; margin: 4px 0; cursor: pointer; color: #aab; }
+  #controls input[type="range"] { width: 120px; vertical-align: middle; }
+  #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 14px; color: #8899aa; z-index: 20; text-align: center; }
+  #loading .spinner { width: 30px; height: 30px; border: 3px solid rgba(255,255,255,0.1); border-top: 3px solid #4a9eff; border-radius: 50%; margin: 0 auto 10px; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="container">
+  <div id="header">
+    <h1>CONFLICTO MAP-DEP: Frustrada RNP 21 sobre el aeropuerto</h1>
+    <p>Fuente: AIP España AD 2-GCRR IAC 7.2, SID 2.3 (AIRAC AMDT 10/25) y SID 4.2 (AIRAC AMDT 12/25), AIS-España / ENAIRE</p>
+  </div>
+  <div id="legend">
+
+    <h3>Procedimientos</h3>
+    <div class="leg-item"><div class="leg-line" style="background:#ff4444"></div>Frustrada RNP 21</div>
+    <div class="leg-item"><div class="leg-line" style="background:#2ca02c"></div>RNP 21 — Tramo final</div>
+    <div class="leg-item"><div class="leg-line" style="background:#4a9eff"></div>SID RWY 03 (RNAV1)</div>
+    <div class="leg-item"><div class="leg-line" style="background:#9467bd"></div>SID RWY 21</div>
+    <div class="leg-item"><div class="leg-line" style="background:#ffaa00; height:4px"></div>RWY 03/21</div>
+    <h3 style="margin-top:10px">Conflicto</h3>
+    <div class="leg-item"><div style="width:20px;height:20px;border:2px solid red;border-radius:4px;margin-right:8px;opacity:0.4;background:rgba(255,0,0,0.15)"></div>Volumen de conflicto (0–4000 ft)</div>
+
+  </div>
+
+  <div id="controls">
+    <label>Exageración vertical:
+      <input type="range" id="vscale" min="1" max="8" value="3" step="0.5">
+      <span id="vscale-val">3.0×</span>
+    </label>
+    <label style="margin-top:6px"><input type="checkbox" id="toggle-planes" checked> Planos de altitud</label>
+    <label><input type="checkbox" id="toggle-labels" checked> Etiquetas</label>
+  </div>
+
+  <div id="info">Arrastrar: rotar · Rueda: zoom · Clic derecho: desplazar · Datos: AIP España AD 2-GCRR · © OpenStreetMap contributors</div>
+  <div id="loading"><div class="spinner"></div>Cargando tiles de OpenStreetMap...</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+
+function dms(d, m, s, h) {
+  const dec = d + m / 60 + s / 3600;
+  return (h === 'S' || h === 'W') ? -dec : dec;
+}
+
+const ARP = { lat: dms(28,56,44,'N'), lon: dms(13,36,19,'W') };
+const KM_LAT = 111.32;
+const KM_LON = 111.32 * Math.cos(ARP.lat * Math.PI / 180);
+const FT_KM = 0.0003048;
+
+const THR03 = { lat: dms(28,56,11.559,'N'), lon: dms(13,36,37.4275,'W'), ft: 19 };
+const THR21 = { lat: dms(28,57,18.40,'N'), lon: dms(13,35,58.67,'W'), ft: 47 };
+const LTE = { lat: dms(28,56,53.4,'N'), lon: dms(13,36,4.8,'W') };
+
+const ZOOM = 11;
+function lonToTileX(lon, z) { return Math.floor((lon + 180) / 360 * (1 << z)); }
+function latToTileY(lat, z) { const r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * (1 << z)); }
+function tileXToLon(x, z) { return x / (1 << z) * 360 - 180; }
+function tileYToLat(y, z) { const n = Math.PI - 2 * Math.PI * y / (1 << z); return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))); }
+
+const TX_MIN = lonToTileX(-13.87, ZOOM);
+const TX_MAX = lonToTileX(-13.20, ZOOM);
+const TY_MIN = latToTileY(29.25, ZOOM);
+const TY_MAX = latToTileY(28.60, ZOOM);
+const COLS = TX_MAX - TX_MIN + 1;
+const ROWS = TY_MAX - TY_MIN + 1;
+const TILE_PX = 256;
+
+function loadTiles() {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = COLS * TILE_PX; canvas.height = ROWS * TILE_PX;
+    const ctx = canvas.getContext('2d');
+    let loaded = 0; const total = COLS * ROWS;
+    for (let ty = TY_MIN; ty <= TY_MAX; ty++) {
+      for (let tx = TX_MIN; tx <= TX_MAX; tx++) {
+        const img = new Image(); img.crossOrigin = 'anonymous';
+        const col = tx - TX_MIN, row = ty - TY_MIN;
+        img.onload = function() { ctx.drawImage(img, col*TILE_PX, row*TILE_PX, TILE_PX, TILE_PX); loaded++; if(loaded>=total) done(); };
+        img.onerror = function() { loaded++; if(loaded>=total) done(); };
+        img.src = `https://tile.openstreetmap.org/${ZOOM}/${tx}/${ty}.png`;
+      }
+    }
+    function done() {
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter; texture.magFilter = THREE.LinearFilter;
+      resolve({ texture, bounds: { west: tileXToLon(TX_MIN,ZOOM), east: tileXToLon(TX_MAX+1,ZOOM), north: tileYToLat(TY_MIN,ZOOM), south: tileYToLat(TY_MAX+1,ZOOM) }});
+    }
+  });
+}
+
+let scene, camera, renderer, groundPlane, altPlanes=[], labelSprites=[];
+let vScale = 3.0;
+
+function toScene(lat, lon, ft) {
+  return new THREE.Vector3((lon-ARP.lon)*KM_LON, (lat-ARP.lat)*KM_LAT, ft*FT_KM*vScale);
+}
+
+function createLine(wps, color, w, dashed) {
+  const pts = wps.map(w => toScene(w.lat,w.lon,w.ft));
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  let mat = dashed ? new THREE.LineDashedMaterial({color,linewidth:1,dashSize:0.4,gapSize:0.2}) : new THREE.LineBasicMaterial({color,linewidth:1});
+  const line = new THREE.Line(geo, mat);
+  if(dashed) line.computeLineDistances();
+  return line;
+}
+
+function createGlideslope(fap, thr, color, n) {
+  const pts = [];
+  for(let i=0;i<n;i++){const t=i/(n-1); pts.push(toScene(fap.lat+t*(thr.lat-fap.lat),fap.lon+t*(thr.lon-fap.lon),fap.ft+t*(thr.ft-fap.ft)));}
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({color}));
+}
+
+function createTube(wps, color, radius) {
+  const points = wps.map(w => toScene(w.lat,w.lon,w.ft));
+  const curve = []; 
+  for(let i=0;i<points.length-1;i++){const a=points[i],b=points[i+1]; for(let t=0;t<=1;t+=0.05) curve.push(new THREE.Vector3(a.x+t*(b.x-a.x),a.y+t*(b.y-a.y),a.z+t*(b.z-a.z)));}
+  const path = new THREE.CatmullRomCurve3(curve,false,'centripetal',0);
+  return new THREE.Mesh(new THREE.TubeGeometry(path,curve.length*2,radius,8,false), new THREE.MeshBasicMaterial({color,transparent:true,opacity:0.85}));
+}
+
+function createMarker(wp, color) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.25,12,12), new THREE.MeshBasicMaterial({color}));
+  m.position.copy(toScene(wp.lat,wp.lon,wp.ft)); return m;
+}
+
+function createSprite(text, pos, color, size) {
+  const c = document.createElement('canvas'); c.width=256; c.height=64;
+  const ctx = c.getContext('2d'); ctx.font='bold 20px Segoe UI,system-ui,sans-serif'; ctx.fillStyle=color; ctx.textAlign='center'; ctx.fillText(text,128,24);
+  const tex = new THREE.CanvasTexture(c); tex.minFilter=THREE.LinearFilter;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false}));
+  s.position.copy(pos); s.position.z+=0.35; s.scale.set(size*4,size,1); return s;
+}
+
+function createAltPlane(ft, color, op) {
+  const z=ft*FT_KM*vScale;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(80,80), new THREE.MeshBasicMaterial({color,transparent:true,opacity:op,side:THREE.DoubleSide,depthWrite:false}));
+  m.position.set(0,0,z); return m;
+}
+
+function createRunway() {
+  const p1=toScene(THR03.lat,THR03.lon,THR03.ft), p2=toScene(THR21.lat,THR21.lon,THR21.ft);
+  const dir=new THREE.Vector3().subVectors(p2,p1), mid=new THREE.Vector3().addVectors(p1,p2).multiplyScalar(0.5);
+  const m = new THREE.Mesh(new THREE.BoxGeometry(0.06,dir.length(),0.008), new THREE.MeshBasicMaterial({color:0xffaa00}));
+  m.position.copy(mid); m.rotation.z=-Math.atan2(dir.x,dir.y); return m;
+}
+
+function addDropLines(group, wps) {
+  wps.forEach(w => {
+    const geo = new THREE.BufferGeometry().setFromPoints([toScene(w.lat,w.lon,w.ft), toScene(w.lat,w.lon,0)]);
+    group.add(new THREE.Line(geo, new THREE.LineBasicMaterial({color:0x444466,transparent:true,opacity:0.25})));
+  });
+}
+
+function addLabels(group, wps, color) {
+  const seen = new Set();
+  wps.forEach(w => {
+    if(seen.has(w.n)) return; seen.add(w.n);
+    const s = createSprite(`${w.n}  ${w.ft}ft`, toScene(w.lat,w.lon,w.ft), color, 1.2);
+    labelSprites.push(s); group.add(s);
+  });
+}
+
+function addARP(group) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.3,16,16), new THREE.MeshBasicMaterial({color:0xffcc00}));
+  m.position.copy(toScene(ARP.lat,ARP.lon,47)); group.add(m);
+}
+
+function addPlanes(group, planeData) {
+  altPlanes = [];
+  planeData.forEach(p => {
+    const plane = createAltPlane(p.ft, p.color, p.op); altPlanes.push(plane); group.add(plane);
+    const z=p.ft*FT_KM*vScale, s=40;
+    const eg = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-s,-s,z),new THREE.Vector3(s,-s,z),new THREE.Vector3(s,s,z),new THREE.Vector3(-s,s,z),new THREE.Vector3(-s,-s,z)]);
+    group.add(new THREE.Line(eg, new THREE.LineBasicMaterial({color:p.color,transparent:true,opacity:0.2})));
+    group.add(createSprite(p.label, new THREE.Vector3(-38,-38,z), '#888', 1.0));
+  });
+}
+
+// Orbit controls
+let isDragging=false, isRightDrag=false, prevMouse={x:0,y:0};
+let spherical, target;
+
+function updateCamera() {
+  const r=spherical.r;
+  camera.position.set(target.x+r*Math.sin(spherical.phi)*Math.cos(spherical.theta), target.y+r*Math.sin(spherical.phi)*Math.sin(spherical.theta), target.z+r*Math.cos(spherical.phi));
+  camera.lookAt(target); camera.up.set(0,0,1);
+}
+function initControls(el) {
+  el.addEventListener('mousedown',(e)=>{isDragging=true;isRightDrag=e.button===2;prevMouse={x:e.clientX,y:e.clientY};});
+  el.addEventListener('mousemove',(e)=>{if(!isDragging)return;const dx=e.clientX-prevMouse.x,dy=e.clientY-prevMouse.y;prevMouse={x:e.clientX,y:e.clientY};
+    if(isRightDrag){const right=new THREE.Vector3(),up=new THREE.Vector3();camera.getWorldDirection(new THREE.Vector3());right.crossVectors(camera.up,new THREE.Vector3().subVectors(target,camera.position)).normalize();up.copy(camera.up);target.addScaledVector(right,dx*0.05);target.addScaledVector(up,-dy*0.05);}
+    else{spherical.theta-=dx*0.005;spherical.phi=Math.max(0.05,Math.min(Math.PI/2-0.01,spherical.phi-dy*0.005));}updateCamera();});
+  el.addEventListener('mouseup',()=>{isDragging=false;}); el.addEventListener('mouseleave',()=>{isDragging=false;});
+  el.addEventListener('wheel',(e)=>{spherical.r*=e.deltaY>0?1.08:0.93;spherical.r=Math.max(5,Math.min(200,spherical.r));updateCamera();e.preventDefault();},{passive:false});
+  el.addEventListener('contextmenu',(e)=>e.preventDefault());
+}
+
+
+// === DATOS DEL PROCEDIMIENTO ===
+
+const RNP21_MA = [
+  {n:'RR551',lat:dms(29,0,14.5,'N'),lon:dms(13,31,42.4,'W'),ft:1700},
+  {n:'RR552',lat:dms(28,59,9.9,'N'),lon:dms(13,34,54,'W'),ft:2000},
+  {n:'RR553',lat:dms(28,56,29.1,'N'),lon:dms(13,36,27.2,'W'),ft:3500},
+  {n:'RR554',lat:dms(28,57,31,'N'),lon:dms(13,19,40,'W'),ft:4000},
+];
+const RNP21_FINAL = [
+  {n:'SONUS',lat:dms(29,2,36.7,'N'),lon:dms(13,24,40.6,'W'),ft:3000},
+  {n:'RR03E',lat:dms(29,1,21.3,'N'),lon:dms(13,28,24.3,'W'),ft:2700},
+  {n:'RR551',lat:dms(29,0,14.5,'N'),lon:dms(13,31,42.4,'W'),ft:1700},
+];
+const SID03 = [
+  {n:'THR03',lat:THR03.lat,lon:THR03.lon,ft:19},
+  {n:'RIPIX',lat:dms(29,0,12.8,'N'),lon:dms(13,33,31.3,'W'),ft:1600},
+  {n:'RR450',lat:dms(29,5,22.9,'N'),lon:dms(13,26,22.9,'W'),ft:3200},
+];
+const SID21 = [
+  {n:'THR21',lat:THR21.lat,lon:THR21.lon,ft:47},
+  {n:'5.3DME',lat:dms(28,55,30,'N'),lon:dms(13,36,20,'W'),ft:1300},
+  {n:'GOMSU',lat:dms(28,47,37,'N'),lon:dms(13,57,58,'W'),ft:5000},
+];
+
+
+// === REBUILD ===
+function rebuildProcedures() {
+  if(procGroup) scene.remove(procGroup);
+  procGroup = new THREE.Group();
+  labelSprites = [];
+
+  procGroup.add(createRunway());
+  // Frustrada RNP 21 — protagonista
+  procGroup.add(createTube(RNP21_MA, 0xff4444, 0.15));
+  RNP21_MA.forEach(w => procGroup.add(createMarker(w, 0xff4444)));
+  // Tramo final RNP 21
+  procGroup.add(createTube(RNP21_FINAL, 0x2ca02c, 0.10));
+  RNP21_FINAL.forEach(w => procGroup.add(createMarker(w, 0x2ca02c)));
+  // SID RWY 03
+  procGroup.add(createTube(SID03, 0x4a9eff, 0.10));
+  SID03.forEach(w => procGroup.add(createMarker(w, 0x4a9eff)));
+  // SID RWY 21
+  procGroup.add(createTube(SID21, 0x9467bd, 0.10));
+  SID21.forEach(w => procGroup.add(createMarker(w, 0x9467bd)));
+  // Cilindro volumétrico de zona de conflicto MAP-DEP
+  // Cubre desde suelo hasta 4000 ft, centrado entre RR553 y ARP
+  const conflictCenterLat = (RNP21_MA[2].lat + ARP.lat) / 2;
+  const conflictCenterLon = (RNP21_MA[2].lon + ARP.lon) / 2;
+  const conflictAltFt = 4000;
+  const cylHeight = conflictAltFt * FT_KM * vScale;
+  const cylRadius = 2.0; // ~2 km de radio
+  const cylGeo = new THREE.CylinderGeometry(cylRadius, cylRadius, cylHeight, 32, 1, true);
+  const cylMat = new THREE.MeshBasicMaterial({color:0xff0000, transparent:true, opacity:0.12, side:THREE.DoubleSide, depthWrite:false});
+  const cylinder = new THREE.Mesh(cylGeo, cylMat);
+  const cylPos = toScene(conflictCenterLat, conflictCenterLon, conflictAltFt / 2);
+  cylinder.position.copy(cylPos);
+  cylinder.rotation.x = Math.PI / 2; // CylinderGeometry is Y-up, rotate to Z-up
+  procGroup.add(cylinder);
+  // Tapa superior e inferior semitransparente
+  const discGeo = new THREE.CircleGeometry(cylRadius, 32);
+  const discMat = new THREE.MeshBasicMaterial({color:0xff0000, transparent:true, opacity:0.08, side:THREE.DoubleSide, depthWrite:false});
+  const discTop = new THREE.Mesh(discGeo, discMat);
+  discTop.position.copy(toScene(conflictCenterLat, conflictCenterLon, conflictAltFt));
+  procGroup.add(discTop);
+  const discBot = new THREE.Mesh(discGeo.clone(), discMat.clone());
+  discBot.position.copy(toScene(conflictCenterLat, conflictCenterLon, 0));
+  procGroup.add(discBot);
+  // Borde del cilindro en suelo y techo (anillos)
+  const ringPts = [];
+  for (let a = 0; a <= Math.PI * 2; a += Math.PI / 16) { ringPts.push(new THREE.Vector3(Math.cos(a) * cylRadius, Math.sin(a) * cylRadius, 0)); }
+  const ringGeoBot = new THREE.BufferGeometry().setFromPoints(ringPts);
+  const ringMatLine = new THREE.LineBasicMaterial({color:0xff3333, transparent:true, opacity:0.5});
+  const ringBot = new THREE.Line(ringGeoBot, ringMatLine);
+  ringBot.position.copy(toScene(conflictCenterLat, conflictCenterLon, 0));
+  procGroup.add(ringBot);
+  const ringTop = new THREE.Line(ringGeoBot.clone(), ringMatLine.clone());
+  ringTop.position.copy(toScene(conflictCenterLat, conflictCenterLon, conflictAltFt));
+  procGroup.add(ringTop);
+  // Etiqueta de zona de conflicto
+  const conflictLabel = createSprite('ZONA CONFLICTO MAP-DEP', toScene(conflictCenterLat, conflictCenterLon, conflictAltFt + 200), '#ff4444', 1.5);
+  procGroup.add(conflictLabel);
+
+  const all = [...RNP21_MA,...RNP21_FINAL,...SID03,...SID21];
+  addDropLines(procGroup, all);
+  const lbls = [
+    ...RNP21_MA.map(w=>({...w,c:'#ff4444'})),
+    ...RNP21_FINAL.filter(w=>!RNP21_MA.find(l=>l.n===w.n)).map(w=>({...w,c:'#2ca02c'})),
+    ...SID03.map(w=>({...w,c:'#4a9eff'})),
+    ...SID21.filter(w=>!SID03.find(l=>l.n===w.n)).map(w=>({...w,c:'#9467bd'})),
+    {n:'ARP',lat:ARP.lat,lon:ARP.lon,ft:47,c:'#ffcc00'},
+  ];
+  const seen=new Set(); lbls.forEach(w=>{if(seen.has(w.n))return;seen.add(w.n);const s=createSprite(`${w.n}  ${w.ft}ft`,toScene(w.lat,w.lon,w.ft),w.c,1.2);labelSprites.push(s);procGroup.add(s);});
+  addARP(procGroup);
+  addPlanes(procGroup, []);
+
+  scene.add(procGroup);
+}
+
+
+let procGroup;
+
+async function init() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a0e17);
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 1000);
+  spherical = { r:45, theta:Math.PI/4, phi:Math.PI/5 };
+  target = new THREE.Vector3(0,3,0.5);
+  updateCamera();
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  document.getElementById('container').appendChild(renderer.domElement);
+  initControls(renderer.domElement);
+
+  const { texture, bounds } = await loadTiles();
+  document.getElementById('loading').style.display = 'none';
+
+  const w = (bounds.east-bounds.west)*KM_LON, h = (bounds.north-bounds.south)*KM_LAT;
+  const cx = ((bounds.east+bounds.west)/2-ARP.lon)*KM_LON, cy = ((bounds.north+bounds.south)/2-ARP.lat)*KM_LAT;
+  groundPlane = new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({map:texture,transparent:true,opacity:0.92,side:THREE.DoubleSide}));
+  groundPlane.position.set(cx,cy,0); scene.add(groundPlane);
+
+  const grid = new THREE.GridHelper(100,50,0x1a2030,0x1a2030); grid.rotation.x=Math.PI/2; grid.position.z=-0.01; scene.add(grid);
+
+  rebuildProcedures();
+
+  document.getElementById('vscale').addEventListener('input',(e)=>{vScale=parseFloat(e.target.value);document.getElementById('vscale-val').textContent=vScale.toFixed(1)+'×';rebuildProcedures();});
+  document.getElementById('toggle-planes').addEventListener('change',(e)=>{altPlanes.forEach(p=>{p.visible=e.target.checked;});});
+  document.getElementById('toggle-labels').addEventListener('change',(e)=>{labelSprites.forEach(s=>{s.visible=e.target.checked;});});
+  window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});
+  animate();
+}
+function animate() { requestAnimationFrame(animate); renderer.render(scene,camera); }
+init();
+
+</script>
+</body>
+</html>
